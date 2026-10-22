@@ -85,10 +85,17 @@ export const parseParameterSheet = async (file: File): Promise<ParseResult> => {
   try {
     const buf = await file.arrayBuffer();
     wb = XLSX.read(buf, { type: "array" });
-  } catch {
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
     return {
       data: null,
-      issues: [{ sheet: "ファイル", message: "Excelファイルとして読み込めませんでした。.xlsx形式か確認してください。", level: "error" }],
+      issues: [
+        {
+          sheet: "ファイル",
+          message: `Excelファイルとして読み込めませんでした。.xlsx形式か確認してください。(詳細: ${detail})`,
+          level: "error",
+        },
+      ],
     };
   }
 
