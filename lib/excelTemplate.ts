@@ -1,8 +1,10 @@
 import * as XLSX from "xlsx";
 import {
+  ACL_HEADERS,
   BASIC_FIELDS,
   COMMON_FIELDS,
   INTERFACE_HEADERS,
+  NAT_HEADERS,
   ROUTING_HEADERS,
   SHEET_NAMES,
   TOPOLOGY_HEADERS,
@@ -51,6 +53,8 @@ export const buildTemplateWorkbook = (device: DeviceModel): XLSX.WorkBook => {
     ["   使用しない行はモードを unused のままにしてください。"],
     ["3. 入力が終わったらファイルを保存し、アプリの「アップロード」からこのファイルを読み込んでください。"],
     ["4. 「機器ID」のセルは自動入力されています。編集しないでください。"],
+    ["5. 「ACL」「NAT」シートと、「インターフェース」シート右側の追加列(QoS/STP/ポートセキュリティ/802.1X等)は"],
+    ["   使わない場合は空欄のままで問題ありません。"],
     [""],
     ["※ このファイルはお使いの端末上でのみ処理され、外部には送信されません。"],
   ];
@@ -107,15 +111,48 @@ export const buildTemplateWorkbook = (device: DeviceModel): XLSX.WorkBook => {
   // --- インターフェース (機種のポート構成を自動展開) ---
   const ifRows: (string | number)[][] = [[...INTERFACE_HEADERS]];
   for (const name of listInterfaceOptions(device)) {
-    ifRows.push([name, "unused", "", "", "", "", "", "", "TRUE"]);
+    ifRows.push([name, "unused", "", "", "", "", "", "", "TRUE", "", "FALSE", "FALSE", "", "", "FALSE", "", "", ""]);
   }
   const ifWs = XLSX.utils.aoa_to_sheet(ifRows);
   ifWs["!cols"] = autoWidth(ifRows);
   setHeaderComments(ifWs, [
     [1, "access / trunk / routed / unused のいずれかを入力してください。\n使わないポートは unused のままでOKです。"],
     [8, "TRUE(シャットダウンする) または FALSE(有効化する) を入力してください。"],
+    [9, "trust-cos / trust-dscp / auto-voip-phone / auto-voip-switch のいずれか。\n使わない場合は空欄のままでOKです。"],
+    [12, "数値を入力すると、そのポートでポートセキュリティが有効になります。\n不要な場合は空欄のままでOKです。"],
+    [13, "ポートセキュリティ違反時の動作。shutdown / restrict / protect のいずれか。"],
+    [15, "このポートに適用するACL名(INバウンド)。「ACL」シートに定義したACL名を入力してください。"],
+    [16, "このポートに適用するACL名(OUTバウンド)。「ACL」シートに定義したACL名を入力してください。"],
+    [17, "NAT上でこのポートが内側(inside)か外側(outside)かを指定します。NATを使わない場合は空欄でOKです。"],
   ]);
   XLSX.utils.book_append_sheet(wb, ifWs, SHEET_NAMES.interfaces);
+
+  // --- ACL ---
+  const aclRows: (string | number)[][] = [[...ACL_HEADERS]];
+  aclRows.push(["ACL-DENY-TELNET", "extended", "", "deny", "tcp", "0.0.0.0", "255.255.255.255", "", "0.0.0.0", "255.255.255.255", "23", "Telnetを拒否"]);
+  aclRows.push(["ACL-DENY-TELNET", "extended", "", "permit", "ip", "0.0.0.0", "255.255.255.255", "", "0.0.0.0", "255.255.255.255", "", "それ以外は許可"]);
+  const aclWs = XLSX.utils.aoa_to_sheet(aclRows);
+  aclWs["!cols"] = autoWidth(aclRows);
+  setHeaderComments(aclWs, [
+    [1, "standard(送信元のみで判定) / extended(プロトコル・宛先・ポートまで指定可) のいずれか。"],
+    [3, "permit(許可) / deny(拒否) のいずれか。"],
+    [4, "standard種別の場合は空欄でOKです。"],
+    [6, "サブネットマスクの逆(ワイルドカードマスク)を入力してください。例: 255.255.255.0 ではなく 0.0.0.255"],
+    [9, "サブネットマスクの逆(ワイルドカードマスク)を入力してください。standard種別の場合は空欄でOKです。"],
+  ]);
+  XLSX.utils.book_append_sheet(wb, aclWs, SHEET_NAMES.acl);
+
+  // --- NAT ---
+  const natRows: (string | number)[][] = [[...NAT_HEADERS]];
+  natRows.push(["static", "192.168.10.100", "203.0.113.10", "", "", "", "", "", "Webサーバー公開用"]);
+  const natWs = XLSX.utils.aoa_to_sheet(natRows);
+  natWs["!cols"] = autoWidth(natRows);
+  setHeaderComments(natWs, [
+    [0, "static(1対1の固定変換) / dynamic(プールを使った動的変換) / pat(ポート変換で複数端末が1つのIPを共有) のいずれか。"],
+    [3, "空欄の場合、インターフェースシートで「NAT方向」をoutsideに設定したポートを使ってoverload変換します。"],
+    [7, "dynamic/pat種別の場合、「ACL」シートに定義したACL名を入力してください。"],
+  ]);
+  XLSX.utils.book_append_sheet(wb, natWs, SHEET_NAMES.nat);
 
   // --- ルーティング ---
   const routingRows: (string | number)[][] = [[...ROUTING_HEADERS]];

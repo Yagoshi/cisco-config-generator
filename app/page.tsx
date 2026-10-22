@@ -115,7 +115,7 @@ export default function Home() {
         const data = parseResult.data!;
         return {
           config: generateConfig(data, device),
-          checkItems: buildCheckItems(data),
+          checkItems: buildCheckItems(data, device),
           mermaidDefinition: buildMermaidDiagram(data, device),
         };
       }),

@@ -9,8 +9,9 @@ export type CheckItem = {
   expected: string;
 };
 
-export const buildCheckItems = (params: ParameterSheet): CheckItem[] => {
-  const { basic, common, vlans, interfaces, routing } = params;
+export const buildCheckItems = (params: ParameterSheet, device: DeviceModel): CheckItem[] => {
+  const { basic, common, vlans, interfaces, routing, acl, nat } = params;
+  const isSwitch = device.category === "switch";
   const items: CheckItem[] = [];
 
   items.push({
@@ -68,6 +69,30 @@ export const buildCheckItems = (params: ParameterSheet): CheckItem[] => {
       expected: "SSH Enabled - version 2.0",
     });
   }
+  if (isSwitch && common.stpMode) {
+    items.push({
+      category: "共通設定",
+      item: "STPモード",
+      command: "show spanning-tree summary",
+      expected: `${common.stpMode} で動作していること`,
+    });
+  }
+  if (isSwitch && common.qosEnabled) {
+    items.push({
+      category: "共通設定",
+      item: "QoS有効化",
+      command: "show mls qos",
+      expected: "QoS is enabled globally と表示されること",
+    });
+  }
+  if (isSwitch && common.radiusServerIp) {
+    items.push({
+      category: "共通設定",
+      item: "RADIUSサーバー疎通",
+      command: `test aaa group radius ${basic.localUsername || "testuser"} ****** legacy`,
+      expected: "RADIUSサーバーから応答があること",
+    });
+  }
 
   for (const v of vlans) {
     items.push({
@@ -101,6 +126,46 @@ export const buildCheckItems = (params: ParameterSheet): CheckItem[] => {
         expected: `${i.name} ${i.ipAddress} up up`,
       });
     }
+    if (isSwitch && i.stpPortfast) {
+      items.push({
+        category: "STP",
+        item: `${i.name} のPortFast`,
+        command: `show spanning-tree interface ${i.name} portfast`,
+        expected: "Portfast が enabled であること",
+      });
+    }
+    if (isSwitch && i.portSecurityMaxMac) {
+      items.push({
+        category: "ポートセキュリティ",
+        item: `${i.name} のポートセキュリティ`,
+        command: `show port-security interface ${i.name}`,
+        expected: `最大MAC数 ${i.portSecurityMaxMac}、違反時動作 ${i.portSecurityViolation} で設定されていること`,
+      });
+    }
+    if (isSwitch && i.dot1xEnabled) {
+      items.push({
+        category: "802.1X",
+        item: `${i.name} の認証状態`,
+        command: `show authentication sessions interface ${i.name}`,
+        expected: "認証セッションが表示されること(未接続時は空でも問題なし)",
+      });
+    }
+    if (i.aclIn) {
+      items.push({
+        category: "ACL",
+        item: `${i.name} のACL(in)適用`,
+        command: `show ip interface ${i.name} | include access list`,
+        expected: `${i.aclIn} が inbound に適用されていること`,
+      });
+    }
+    if (i.aclOut) {
+      items.push({
+        category: "ACL",
+        item: `${i.name} のACL(out)適用`,
+        command: `show ip interface ${i.name} | include access list`,
+        expected: `${i.aclOut} が outbound に適用されていること`,
+      });
+    }
   }
 
   for (const r of routing) {
@@ -128,6 +193,30 @@ export const buildCheckItems = (params: ParameterSheet): CheckItem[] => {
         expected: "近隣ルーターが表示されること",
       });
     }
+  }
+
+  for (const name of Array.from(new Set(acl.map((a) => a.name)))) {
+    items.push({
+      category: "ACL",
+      item: `ACL「${name}」の定義内容`,
+      command: `show ip access-lists ${name}`,
+      expected: "意図した許可/拒否ルールが設定されていること",
+    });
+  }
+
+  if (nat.length > 0) {
+    items.push({
+      category: "NAT",
+      item: "NAT変換テーブル",
+      command: "show ip nat translations",
+      expected: "意図した変換エントリが表示されること",
+    });
+    items.push({
+      category: "NAT",
+      item: "NAT統計情報",
+      command: "show ip nat statistics",
+      expected: "inside/outsideインターフェースが正しく認識されていること",
+    });
   }
 
   return items;

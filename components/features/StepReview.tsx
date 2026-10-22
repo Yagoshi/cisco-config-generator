@@ -59,11 +59,13 @@ export const StepReview = ({
         <NotificationBanner type="success" title="入力内容に問題は見つかりませんでした" />
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryTile label="VLAN" value={data.vlans.length} />
         <SummaryTile label="使用インターフェース" value={usedInterfaces.length} />
         <SummaryTile label="ルーティング設定" value={data.routing.length} />
         <SummaryTile label="接続先(トポロジー)" value={data.topology.length} />
+        <SummaryTile label="ACLルール" value={data.acl.length} />
+        <SummaryTile label="NATエントリ" value={data.nat.length} />
         <SummaryTile label="検出された指摘" value={issues.length} />
       </div>
 

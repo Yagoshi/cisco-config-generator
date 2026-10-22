@@ -1,5 +1,5 @@
 import type { DeviceModel } from "./devices";
-import type { InterfaceEntry, ParameterSheet, RoutingEntry, VlanEntry } from "./types";
+import type { AclEntry, InterfaceEntry, NatEntry, ParameterSheet, RoutingEntry, VlanEntry } from "./types";
 
 const line = (indent: number, text: string) => `${" ".repeat(indent)}${text}`;
 
@@ -9,6 +9,59 @@ const maskToWildcard = (mask: string): string | null => {
   const parts = mask.split(".").map(Number);
   if (parts.length !== 4 || parts.some((p) => Number.isNaN(p))) return null;
   return parts.map((p) => 255 - p).join(".");
+};
+
+const buildAclCommands = (acl: AclEntry[]): string[] => {
+  if (acl.length === 0) return [];
+  const out = section("ACL");
+  const names = Array.from(new Set(acl.map((a) => a.name)));
+  for (const name of names) {
+    const entries = acl.filter((a) => a.name === name);
+    out.push(`!`, `ip access-list ${entries[0].type} ${name}`);
+    for (const e of entries) {
+      const seq = e.sequence ? `${e.sequence} ` : "";
+      if (e.type === "standard") {
+        out.push(line(1, `${seq}${e.action} ${e.source} ${e.sourceWildcard}`));
+      } else {
+        const isPortAware = e.protocol === "tcp" || e.protocol === "udp";
+        const srcPort = isPortAware && e.sourcePort ? ` eq ${e.sourcePort}` : "";
+        const dstPort = isPortAware && e.destinationPort ? ` eq ${e.destinationPort}` : "";
+        out.push(
+          line(
+            1,
+            `${seq}${e.action} ${e.protocol} ${e.source} ${e.sourceWildcard}${srcPort} ${e.destination} ${e.destinationWildcard}${dstPort}`,
+          ),
+        );
+      }
+    }
+  }
+  return out;
+};
+
+const buildNatCommands = (nat: NatEntry[], interfaces: InterfaceEntry[], device: DeviceModel): string[] => {
+  if (nat.length === 0 || !device.supportsLayer3) return [];
+  const out = section("NAT");
+  const outsideInterface = interfaces.find((i) => i.natDirection === "outside");
+
+  for (const n of nat) {
+    if (n.type === "static") {
+      if (n.localIp && n.globalIp) out.push(`ip nat inside source static ${n.localIp} ${n.globalIp}`);
+    } else {
+      const hasPool = n.poolName && n.poolStart && n.poolEnd && n.poolMask;
+      if (hasPool) out.push(`ip nat pool ${n.poolName} ${n.poolStart} ${n.poolEnd} netmask ${n.poolMask}`);
+      if (!n.aclName) continue;
+      if (n.type === "dynamic" && hasPool) {
+        out.push(`ip nat inside source list ${n.aclName} pool ${n.poolName}`);
+      } else if (n.type === "pat") {
+        if (hasPool) {
+          out.push(`ip nat inside source list ${n.aclName} pool ${n.poolName} overload`);
+        } else if (outsideInterface) {
+          out.push(`ip nat inside source list ${n.aclName} interface ${outsideInterface.name} overload`);
+        }
+      }
+    }
+  }
+  return out;
 };
 
 const buildVlanCommands = (vlans: VlanEntry[], device: DeviceModel): string[] => {
@@ -73,6 +126,35 @@ const buildInterfaceCommands = (interfaces: InterfaceEntry[], device: DeviceMode
       }
     }
 
+    if (isSwitch && entry.qos === "trust-cos") body.push(line(1, `mls qos trust cos`));
+    else if (isSwitch && entry.qos === "trust-dscp") body.push(line(1, `mls qos trust dscp`));
+    else if (isSwitch && entry.qos === "auto-voip-phone") body.push(line(1, `auto qos voip cisco-phone`));
+    else if (isSwitch && entry.qos === "auto-voip-switch") body.push(line(1, `auto qos voip cisco-switch`));
+
+    if (isSwitch && entry.stpPortfast) body.push(line(1, `spanning-tree portfast`));
+    if (isSwitch && entry.stpBpduGuard) body.push(line(1, `spanning-tree bpduguard enable`));
+
+    if (isSwitch && entry.portSecurityMaxMac) {
+      body.push(
+        line(1, `switchport port-security`),
+        line(1, `switchport port-security maximum ${entry.portSecurityMaxMac}`),
+        line(1, `switchport port-security mac-address sticky`),
+      );
+      if (entry.portSecurityViolation) {
+        body.push(line(1, `switchport port-security violation ${entry.portSecurityViolation}`));
+      }
+    }
+
+    if (isSwitch && entry.dot1xEnabled) {
+      body.push(line(1, `authentication port-control auto`), line(1, `dot1x pae authenticator`));
+    }
+
+    if (entry.aclIn) body.push(line(1, `ip access-group ${entry.aclIn} in`));
+    if (entry.aclOut) body.push(line(1, `ip access-group ${entry.aclOut} out`));
+
+    if (entry.natDirection === "inside") body.push(line(1, `ip nat inside`));
+    else if (entry.natDirection === "outside") body.push(line(1, `ip nat outside`));
+
     body.push(line(1, entry.shutdown ? `shutdown` : `no shutdown`));
     out.push(...body);
   }
@@ -115,7 +197,8 @@ const buildRoutingCommands = (routing: RoutingEntry[]): string[] => {
 };
 
 export const generateConfig = (params: ParameterSheet, device: DeviceModel): string => {
-  const { basic, common, vlans, interfaces, routing } = params;
+  const { basic, common, vlans, interfaces, routing, acl, nat } = params;
+  const isSwitch = device.category === "switch";
   const lines: string[] = [];
 
   lines.push(`! ${device.series} (${device.model}) 設定コマンド`);
@@ -159,6 +242,29 @@ export const generateConfig = (params: ParameterSheet, device: DeviceModel): str
   if (common.syslogServer) {
     lines.push(`logging host ${common.syslogServer}`, `logging trap ${common.loggingTrapLevel}`);
   }
+  if (isSwitch && common.stpMode) {
+    lines.push(`spanning-tree mode ${common.stpMode}`);
+  }
+  if (isSwitch && common.qosEnabled) {
+    lines.push(`mls qos`);
+  }
+  const dot1xInUse = interfaces.some((i) => i.dot1xEnabled);
+  if (isSwitch && (dot1xInUse || common.radiusServerIp)) {
+    lines.push(
+      `!`,
+      `aaa new-model`,
+      `aaa authentication dot1x default group radius`,
+      `dot1x system-auth-control`,
+    );
+    if (common.radiusServerIp) {
+      lines.push(
+        `!`,
+        `radius server RADIUS-SERVER1`,
+        line(1, `address ipv4 ${common.radiusServerIp} auth-port ${common.radiusAuthPort} acct-port ${common.radiusAcctPort}`),
+        ...(common.radiusKey ? [line(1, `key ${common.radiusKey}`)] : []),
+      );
+    }
+  }
   lines.push(
     `!`,
     `line con 0`,
@@ -170,6 +276,8 @@ export const generateConfig = (params: ParameterSheet, device: DeviceModel): str
     ...(common.sshEnabled ? [line(1, `transport input ssh`)] : []),
   );
 
+  lines.push(...buildAclCommands(acl));
+  lines.push(...buildNatCommands(nat, interfaces, device));
   lines.push(...buildVlanCommands(vlans, device));
   lines.push(...buildInterfaceCommands(interfaces, device));
   lines.push(...buildRoutingCommands(routing));
