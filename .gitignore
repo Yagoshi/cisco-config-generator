@@ -24,8 +24,8 @@
 .DS_Store
 *.pem
 
-# local tooling
-/.claude/
+# local tooling (launch.json is shared so Claude Code can preview the dev server on any machine)
+.claude/settings.local.json
 
 # debug
 npm-debug.log*
