@@ -1,5 +1,7 @@
 import type { DeviceModel } from "@/lib/devices";
+import type { ValidationIssue } from "@/lib/types";
 import { Button } from "../ui/Button";
+import { NotificationBanner } from "../ui/NotificationBanner";
 import {
   ProgressIndicator,
   ProgressIndicatorDescription,
@@ -14,12 +16,15 @@ export const StepUpload = ({
   onFileSelected,
   fileName,
   isParsing,
+  loadFailedIssues,
 }: {
   device: DeviceModel;
   onDownloadTemplate: () => void;
   onFileSelected: (file: File) => void;
   fileName: string | null;
   isParsing: boolean;
+  /** ファイル自体が読み込めなかった場合(内容の入力不備ではなく)のエラー一覧 */
+  loadFailedIssues?: ValidationIssue[];
 }) => {
   return (
     <div className="flex flex-col gap-8">
@@ -62,7 +67,18 @@ export const StepUpload = ({
             <ProgressIndicatorDescription>入力内容を確認しています。しばらくお待ちください…</ProgressIndicatorDescription>
           </ProgressIndicator>
         ) : (
-          <FileDropzone onFileSelected={onFileSelected} fileName={fileName} />
+          <div className="flex flex-col gap-4">
+            <FileDropzone onFileSelected={onFileSelected} fileName={fileName} />
+            {loadFailedIssues && loadFailedIssues.length > 0 && (
+              <NotificationBanner type="error" title="ファイルを読み込めませんでした">
+                <ul className="list-disc space-y-1 pl-5">
+                  {loadFailedIssues.map((issue, idx) => (
+                    <li key={idx}>{issue.message}</li>
+                  ))}
+                </ul>
+              </NotificationBanner>
+            )}
+          </div>
         )}
       </div>
     </div>

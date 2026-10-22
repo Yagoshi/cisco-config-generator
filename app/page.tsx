@@ -77,19 +77,34 @@ export default function Home() {
   const handleFileSelected = async (file: File) => {
     setFileName(file.name);
     setIsParsing(true);
-    const result = await withMinDuration(parseParameterSheet(file), 700);
-    if (result.data && device && result.data.deviceId && result.data.deviceId !== device.id) {
-      result.issues = [
-        {
-          sheet: "基本情報",
-          message: `このファイルは別の機種(${result.data.deviceId})用に生成されたテンプレートの可能性があります。インターフェース一覧が選択中の機種と一致しない場合は、テンプレートを取得し直してください。`,
-          level: "warning",
-        },
-        ...result.issues,
-      ];
+    try {
+      const result = await withMinDuration(parseParameterSheet(file), 700);
+      if (result.data && device && result.data.deviceId && result.data.deviceId !== device.id) {
+        result.issues = [
+          {
+            sheet: "基本情報",
+            message: `このファイルは別の機種(${result.data.deviceId})用に生成されたテンプレートの可能性があります。インターフェース一覧が選択中の機種と一致しない場合は、テンプレートを取得し直してください。`,
+            level: "warning",
+          },
+          ...result.issues,
+        ];
+      }
+      setParseResult(result);
+    } catch {
+      setParseResult({
+        data: null,
+        issues: [
+          {
+            sheet: "ファイル",
+            message:
+              "予期しないエラーによりファイルを処理できませんでした。ブラウザを最新版に更新するか、別のブラウザでお試しください。",
+            level: "error",
+          },
+        ],
+      });
+    } finally {
+      setIsParsing(false);
     }
-    setParseResult(result);
-    setIsParsing(false);
   };
 
   const handleGenerate = async () => {
@@ -171,6 +186,7 @@ export default function Home() {
               isParsing={isParsing}
               onDownloadTemplate={() => downloadTemplate(device)}
               onFileSelected={handleFileSelected}
+              loadFailedIssues={parseResult && !parseResult.data ? parseResult.issues : undefined}
             />
           )}
 
