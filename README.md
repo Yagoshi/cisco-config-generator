@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cisco Config Studio
 
-## Getting Started
+Ciscoのパラメーターシート(Excel)から、設定コマンド・確認用チェックシート・ネットワーク構成図(Mermaid)を生成するツールです。すべての処理はブラウザ内で完結し、入力データが外部サーバーに送信されることはありません。
 
-First, run the development server:
+## ローカルで動かす(開発・動作確認用)
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+[http://localhost:3000](http://localhost:3000) を開きます。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 会社PCなど、Node.jsを入れられない環境での使い方
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+このアプリは完全にブラウザ内で動く静的サイトとして公開されています。**Node.jsのインストールもgit cloneも不要**で、以下のURLをブラウザで開くだけで使えます。
 
-## Learn More
+```
+https://<GitHubユーザー名>.github.io/<リポジトリ名>/
+```
 
-To learn more about Next.js, take a look at the following resources:
+ログインも不要なので、社内ネットワークからgithub.comを閲覧できる環境であればそのまま利用できます。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## GitHub Pagesへの公開手順(初回のみ)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. GitHubで**Public**リポジトリを新規作成し、このプロジェクトをpushする
+   ```bash
+   git init
+   git add .
+   git commit -m "Initial commit"
+   git branch -M main
+   git remote add origin https://github.com/<ユーザー名>/<リポジトリ名>.git
+   git push -u origin main
+   ```
+2. GitHubのリポジトリ画面で **Settings → Pages** を開き、「Build and deployment」の **Source** を `GitHub Actions` に設定する
+3. `main` ブランチにpushすると `.github/workflows/deploy-pages.yml` が自動実行され、数分後に `https://<ユーザー名>.github.io/<リポジトリ名>/` で公開される
+4. 以降は `main` にpushするたびに自動で再デプロイされる
 
-## Deploy on Vercel
+### 補足: basePathについて
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+GitHub Pagesはプロジェクト単位だと `/<リポジトリ名>/` 以下のサブパスで公開されるため、CIビルド時のみ `next.config.ts` が `GITHUB_PAGES_BASE_PATH` 環境変数(ワークフロー内でリポジトリ名から自動設定)を見てパスを調整します。ローカルの `npm run dev` / `npm run build` では何も設定しなくて構いません。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 課内での標準利用に向けて
+
+- まずは個人のGitHubアカウントで公開し、使い勝手を確認するのがおすすめです。
+- 継続的に課の標準ツールとして使う場合は、特定個人のアカウントに依存しないよう、GitHub Organization(無料枠で作成可能)への移管を検討してください。
+- 利用者が増える場合は、情報システム部門に外部GitHub Pagesの利用について一声かけておくと、後々のトラブルを避けやすくなります。
