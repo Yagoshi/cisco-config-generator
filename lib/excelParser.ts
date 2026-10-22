@@ -25,6 +25,16 @@ import type {
 
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
+// OLE2/CFB (Compound File Binary) のマジックナンバー。
+// パスワード保護・機密度ラベル(Microsoft Purview/AIP等)で暗号化されたOfficeファイルはこの形式でラップされる。
+const OLE2_SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+
+const isEncryptedOfficeContainer = (buf: ArrayBuffer): boolean => {
+  if (buf.byteLength < OLE2_SIGNATURE.length) return false;
+  const bytes = new Uint8Array(buf, 0, OLE2_SIGNATURE.length);
+  return OLE2_SIGNATURE.every((b, i) => bytes[i] === b);
+};
+
 const isValidIPv4 = (value: string) => {
   if (!IPV4_RE.test(value.trim())) return false;
   return value
@@ -84,6 +94,19 @@ export const parseParameterSheet = async (file: File): Promise<ParseResult> => {
   let wb: XLSX.WorkBook;
   try {
     const buf = await file.arrayBuffer();
+    if (isEncryptedOfficeContainer(buf)) {
+      return {
+        data: null,
+        issues: [
+          {
+            sheet: "ファイル",
+            message:
+              "このファイルはAIP(Azure Information Protection/Microsoft Purview)の機密度ラベルによって暗号化されているため、ブラウザ上では読み込めません。外部からダウンロードしたファイルに自動で保護がかかる設定になっている可能性があります。Excelでファイルを開き、リボンの「機密度」またはAIPの「保護」ボタンから、ラベルを「制限なし」などの保護がかからない区分に変更したうえで保存し、再度アップロードしてください。(パスワード保護が原因の場合は、ファイル→情報→ブックの保護からパスワードを解除してください)",
+            level: "error",
+          },
+        ],
+      };
+    }
     wb = XLSX.read(buf, { type: "array" });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
