@@ -2,8 +2,9 @@
 @import "@digital-go-jp/tailwind-theme-plugin/v4";
 
 @theme inline {
-  --font-sans: var(--font-noto-sans-jp), "Noto Sans JP", "Hiragino Kaku Gothic ProN", sans-serif;
-  --font-mono: var(--font-noto-sans-mono), "Noto Sans Mono", ui-monospace, monospace;
+  --font-sans: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Meiryo",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, "MS Gothic", monospace;
 
   /* アプリ全体のダークテーマ用セマンティックトークン */
   --color-app-bg: #0a0e17;
